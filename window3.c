@@ -48,13 +48,15 @@ static gboolean on_timer_tick(gpointer user_data) {
     // url, time(NULL)); system(cmd); g_free(cmd);
 
     char *cmd = g_strdup_printf(
-        "ffmpeg reconnect 1 -reconnect_at_eof 0 -reconnect_streamed 1 "
-        "-reconnect_delay_max 10000 -i '%s' -t %d -c copy output%u.ts &",
-        url, data->duration_seconds, data->timer_id);
+        "ffmpeg -reconnect 1 -reconnect_at_eof 0 -reconnect_streamed 1 "
+        "-reconnect_delay_max 4294 -i '%s' -t %d -c copy output%u.ts &",
+        url, data->spin_duration, data->timer_id);
     system(cmd);
     g_free(cmd);
 
-    char *msg = g_strdup_printf("⏺ Recording Started!\nSource: %s", url);
+    char *msg =
+        g_strdup_printf("⏺ Recording Started!\nSource: %s\nDuration left: %d",
+                        url, data->spin_duration - data->duration_seconds);
     gtk_label_set_text(GTK_LABEL(data->status_label), msg);
     g_free(msg);
 
@@ -193,7 +195,7 @@ static void on_activate(GtkApplication *app, IptvTimerData *data) {
   gtk_box_append(GTK_BOX(duration_box), dur_label);
 
   data->spin_duration =
-      gtk_spin_button_new_with_range(1, 1440, 1); // Default 1 min
+      gtk_spin_button_new_with_range(0, 1440, 1); // Default 1 min
   gtk_box_append(GTK_BOX(duration_box), data->spin_duration);
 
   // Stream URL Input
