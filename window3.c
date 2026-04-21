@@ -49,14 +49,14 @@ static gboolean on_timer_tick(gpointer user_data) {
 
     char *cmd = g_strdup_printf(
         "ffmpeg -reconnect 1 -reconnect_at_eof 0 -reconnect_streamed 1 "
-        "-reconnect_delay_max 4294 -i '%s' -t %d -c copy output%u.ts &",
-        url, data->spin_duration, data->timer_id);
+        "-reconnect_delay_max 4294 -i '%s' -t %d -c copy output%u.mkv &",
+        url, data->duration_seconds, data->timer_id);
     system(cmd);
     g_free(cmd);
 
     char *msg =
         g_strdup_printf("⏺ Recording Started!\nSource: %s\nDuration left: %d",
-                        url, data->spin_duration - data->duration_seconds);
+                        url, data->duration_seconds);
     gtk_label_set_text(GTK_LABEL(data->status_label), msg);
     g_free(msg);
 
