@@ -7,9 +7,10 @@ typedef struct {
   GtkWidget *status_label;
   GtkWidget *clock_label;
   GtkWidget *calendar;
-  GtkWidget *spin_minutes;
-  GtkWidget *spin_duration;
+  GtkWidget *time_entry;
+  GtkWidget *duration_entry;
   GtkWidget *url_entry;
+  GtkWidget *filename_entry;
   GtkWidget *start_button;
   GtkWidget *stop_button;
   guint timer_id;
@@ -47,10 +48,15 @@ static gboolean on_timer_tick(gpointer user_data) {
     // char *cmd = g_strdup_printf("ffmpeg -i '%s' -c copy output_%ld.ts &",
     // url, time(NULL)); system(cmd); g_free(cmd);
 
+    const char *filename = gtk_editable_get_text(GTK_EDITABLE(data->filename_entry));
+    if (!filename || filename[0] == '\0') {
+      filename = "output.mkv";
+    }
+
     char *cmd = g_strdup_printf(
         "ffmpeg -reconnect 1 -reconnect_at_eof 0 -reconnect_streamed 1 "
-        "-reconnect_delay_max 4294 -i '%s' -t %d -c copy output%u.mkv &",
-        url, data->duration_seconds, data->timer_id);
+        "-reconnect_delay_max 4294 -i '%s' -t %d -c copy '%s' &",
+        url, data->duration_seconds, filename);
     system(cmd);
     g_free(cmd);
 
@@ -74,9 +80,11 @@ static gboolean on_timer_tick(gpointer user_data) {
   }
 
   // Update the UI with the remaining time
-  char buf[64];
-  snprintf(buf, sizeof(buf), "Starting in: %02d:%02d", data->seconds / 60,
-           data->seconds % 60);
+  char buf[128];
+  int h = data->seconds / 3600;
+  int m = (data->seconds % 3600) / 60;
+  int s = data->seconds % 60;
+  snprintf(buf, sizeof(buf), "Starting in: %02d:%02d:%02d", h, m, s);
   gtk_label_set_text(GTK_LABEL(data->status_label), buf);
 
   return G_SOURCE_CONTINUE; // Keep the timer running
@@ -104,18 +112,40 @@ static void on_start_clicked(GtkButton *btn, IptvTimerData *data) {
   if (data->timer_id != 0)
     return; // Prevent multiple timers
 
-  // Get the minutes from the UI and convert to seconds
-  int mins =
-      gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(data->spin_minutes));
-  data->seconds = mins * 60;
+  // Get date from calendar
+  GDateTime *date = gtk_calendar_get_date(GTK_CALENDAR(data->calendar));
+  int year = g_date_time_get_year(date);
+  int month = g_date_time_get_month(date);
+  int day = g_date_time_get_day_of_month(date);
+  g_date_time_unref(date);
+
+  // Get time from entry
+  const char *time_str = gtk_editable_get_text(GTK_EDITABLE(data->time_entry));
+  int th = 0, tm = 0, ts = 0;
+  sscanf(time_str, "%d:%d:%d", &th, &tm, &ts);
+
+  // Create target GDateTime
+  GDateTime *target_time = g_date_time_new_local(year, month, day, th, tm, ts);
+  if (!target_time) return;
+
+  GDateTime *now = g_date_time_new_now_local();
+  
+  // Calculate difference in seconds
+  GTimeSpan diff = g_date_time_difference(target_time, now);
+  g_date_time_unref(target_time);
+  g_date_time_unref(now);
+
+  data->seconds = diff / G_TIME_SPAN_SECOND;
 
   if (data->seconds <= 0)
     return;
 
   // Get recording duration
-  int duration_mins =
-      gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(data->spin_duration));
-  data->duration_seconds = duration_mins * 60;
+  const char *dur_str =
+      gtk_editable_get_text(GTK_EDITABLE(data->duration_entry));
+  int h = 0, m = 0, s = 0;
+  sscanf(dur_str, "%d:%d:%d", &h, &m, &s);
+  data->duration_seconds = h * 3600 + m * 60 + s;
 
   // Lock the button and style the label
   gtk_widget_set_sensitive(data->start_button, FALSE);
@@ -126,9 +156,11 @@ static void on_start_clicked(GtkButton *btn, IptvTimerData *data) {
   // Start the asynchronous timer (1 interval = 1 second)
   data->timer_id = g_timeout_add_seconds(1, on_timer_tick, data);
   // on_timer_tick(data); // Force an immediate UI update
-  char buf[64];
-  snprintf(buf, sizeof(buf), "Starting in: %02d:%02d", data->seconds / 60,
-           data->seconds % 60);
+  char buf[128];
+  int rem_h = data->seconds / 3600;
+  int rem_m = (data->seconds % 3600) / 60;
+  int rem_s = data->seconds % 60;
+  snprintf(buf, sizeof(buf), "Starting in: %02d:%02d:%02d", rem_h, rem_m, rem_s);
   gtk_label_set_text(GTK_LABEL(data->status_label), buf);
 }
 
@@ -179,24 +211,24 @@ static void on_activate(GtkApplication *app, IptvTimerData *data) {
   gtk_widget_set_halign(input_box, GTK_ALIGN_CENTER);
   gtk_box_append(GTK_BOX(vbox), input_box);
 
-  GtkWidget *min_label = gtk_label_new("Delay (Minutes):");
-  gtk_box_append(GTK_BOX(input_box), min_label);
+  GtkWidget *time_label = gtk_label_new("Start Time (HH:MM:SS):");
+  gtk_box_append(GTK_BOX(input_box), time_label);
 
-  data->spin_minutes =
-      gtk_spin_button_new_with_range(0, 1440, 1); // Up to 24 hours
-  gtk_box_append(GTK_BOX(input_box), data->spin_minutes);
+  data->time_entry = gtk_entry_new();
+  gtk_entry_set_placeholder_text(GTK_ENTRY(data->time_entry), "12:00:00");
+  gtk_box_append(GTK_BOX(input_box), data->time_entry);
 
   // Duration input area
   GtkWidget *duration_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
   gtk_widget_set_halign(duration_box, GTK_ALIGN_CENTER);
   gtk_box_append(GTK_BOX(vbox), duration_box);
 
-  GtkWidget *dur_label = gtk_label_new("Duration (Minutes):");
+  GtkWidget *dur_label = gtk_label_new("Duration (HH:MM:SS):");
   gtk_box_append(GTK_BOX(duration_box), dur_label);
 
-  data->spin_duration =
-      gtk_spin_button_new_with_range(0, 1440, 1); // Default 1 min
-  gtk_box_append(GTK_BOX(duration_box), data->spin_duration);
+  data->duration_entry = gtk_entry_new();
+  gtk_entry_set_placeholder_text(GTK_ENTRY(data->duration_entry), "00:00:00");
+  gtk_box_append(GTK_BOX(duration_box), data->duration_entry);
 
   // Stream URL Input
   data->url_entry = gtk_entry_new();
@@ -204,6 +236,13 @@ static void on_activate(GtkApplication *app, IptvTimerData *data) {
                                  "Enter Stream URL (e.g. http://...)");
   gtk_widget_set_margin_top(data->url_entry, 10);
   gtk_box_append(GTK_BOX(vbox), data->url_entry);
+
+  // Output Filename Input
+  data->filename_entry = gtk_entry_new();
+  gtk_entry_set_placeholder_text(GTK_ENTRY(data->filename_entry),
+                                 "Enter Output Filename (e.g. recording.mkv)");
+  gtk_widget_set_margin_top(data->filename_entry, 10);
+  gtk_box_append(GTK_BOX(vbox), data->filename_entry);
 
   // Buttons container
   GtkWidget *button_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
