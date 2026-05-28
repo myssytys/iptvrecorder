@@ -10,15 +10,23 @@
  */
 
 void launch_ffmpeg(const char *filename, const char *url) {
-  const char *args[] = {
-      "ffmpeg",  "-re",      "-i",          filename,     "-c:v",
-      "libx264", "-preset",  "veryfast",    "-profile:v", "high",
-      "-level",  "4.1",      "-b:v",        "3000k",      "-maxrate",
-      "3000k",   "-bufsize", "6000k",       "-pix_fmt",   "yuv420p",
-      "-g",      "60",       "-keyint_min", "60",         "-sc_threshold",
-      "0",       "-c:a",     "aac",         "-b:a",       "128k",
-      "-ar",     "44100",    "-ac",         "2",          "-f",
-      "flv",     url,        NULL};
+  char filter_arg[1024];
+  snprintf(filter_arg, sizeof(filter_arg), "subtitles=%s", filename);
+
+  const char *args[] = {"ffmpeg",      "-re",        "-i",
+                        filename,      "-vf",        filter_arg,
+                        "-c:v",        "libx264",    "-preset",
+                        "veryfast",    "-profile:v", "high",
+                        "-level",      "4.1",        "-b:v",
+                        "3000k",       "-maxrate",   "3000k",
+                        "-bufsize",    "6000k",      "-pix_fmt",
+                        "yuv420p",     "-g",         "60",
+                        "-keyint_min", "60",         "-sc_threshold",
+                        "0",           "-c:a",       "aac",
+                        "-b:a",        "128k",       "-ar",
+                        "44100",       "-ac",        "2",
+                        "-f",          "flv",        url,
+                        NULL};
 
   printf("Command: ");
   for (int i = 0; args[i] != NULL; i++) {
