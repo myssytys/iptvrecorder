@@ -8,6 +8,5 @@ window3: window3.c
 
 r: r.c
 	gcc -Wall r.c -o r
-
-
-	
+s: s.c
+	gcc -Wall s.c -o s
